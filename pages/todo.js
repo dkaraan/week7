@@ -10,7 +10,7 @@ import {
     IconButton,
     Divider,
 } from "@chakra-ui/react"
-import { AddIcon, DeleteIcon, StarIcon } from "@chakra-ui/icons"
+import DarkModeSwitch from '../components/DarkModeSwitch'
 import {
     useAuthUser,
     withAuthUser,
@@ -18,62 +18,29 @@ import {
     AuthAction,
 } from 'next-firebase-auth'
 import getAbsoluteURL from '../utils/getAbsoluteURL'
+import { AddIcon, DeleteIcon, StarIcon } from "@chakra-ui/icons"
 import firebase from 'firebase/app'
 import 'firebase/firestore'
 
-// imports here
-
 const Todo = () => {
-    return (
-        <Flex flexDir="column" maxW={800} align="center" justify="center" minH="100vh" m="auto" px={4}>
+    const AuthUser = useAuthUser()
+    const [input, setInput] = useState('')
+    const [todos, setTodos] = useState([])
 
-        </Flex>
-    )
-}
+    // console.log(AuthUser)
+    // console.log(todos)
 
-export const getServerSideProps = withAuthUserTokenSSR()
+    useEffect(() => {
+        AuthUser.id &&
+            firebase
+                .firestore()
+                .collection(AuthUser.id)
+                .orderBy('timestamp', 'desc')
+                .onSnapshot(snapshot => {
+                    setTodos(snapshot.docs.map(doc => doc.data().todo))
+                })
+    })
 
-export default withAuthUser()(Todo)
-
-<Flex flexDir="column" maxW={800} align="center" justify="center" minH="100vh" m="auto" px={4}>
-    <Flex justify="space-between" w="100%" align="center">
-        <Heading mb={4}>Welcome, {AuthUser.email}!</Heading>
-        <IconButton ml={2} onClick={AuthUser.signOut} icon={<StarIcon />} />
-    </Flex>
-
-        <InputGroup>
-            <InputLeftElement
-                pointerEvents="none"
-                children={<AddIcon color="gray.300" />}
-            />
-            <Input type="text" placeholder="Learn Chakra-UI & Next.js" />
-            <Button
-                ml={2}
-            >
-                Add Todo
-            </Button>
-        </InputGroup>
-</Flex>
-
-const [input, setInput] = useState('')
-const [todos, setTodos] = useState([])
-
-//gettting the data using onClick and onChange
-<InputGroup>
-        <InputLeftElement
-            pointerEvents="none"
-            children={<AddIcon color="gray.300" />}
-        />
-        <Input type="text" onChange={(e) => setInput(e.target.value)} placeholder="Learn Chakra-UI & Next.js" />
-        <Button
-            ml={2}
-            onClick={() => sendData()}
-        >
-            Add Todo
-        </Button>
-    </InputGroup>
-
-    //Sending The Data
     const sendData = () => {
         try {
             // try to update doc
@@ -91,22 +58,44 @@ const [todos, setTodos] = useState([])
         }
     }
 
-    //fetching the firestore data
-
-    useEffect(() => {
-        AuthUser.id &&
+    const deleteTodo = (t) => {
+        try {
             firebase
                 .firestore()
                 .collection(AuthUser.id)
-                .orderBy('timestamp', 'desc')
-                .onSnapshot(snapshot => {
-                    setTodos(snapshot.docs.map(doc => doc.data().todo))
-                })
-    })
+                .doc(t)
+                .delete()
+                .then(console.log('Data was successfully deleted!'))
+        } catch (error) {
+            console.log(error)
+        }
+    }
 
-    //Displaying Todos To User
+    return (
+        <Flex flexDir="column" maxW={800} align="center" justify="center" minH="100vh" m="auto" px={4}>
+            <Flex justify="space-between" w="100%" align="center">
+                <Heading mb={4}>Welcome, {AuthUser.email}!</Heading>
+                <Flex>
+                    <DarkModeSwitch />
+                    <IconButton ml={2} onClick={AuthUser.signOut} icon={<StarIcon />} />
+                </Flex>
+            </Flex>
 
-    {todos.map((t, i) => {
+            <InputGroup>
+                <InputLeftElement
+                    pointerEvents="none"
+                    children={<AddIcon color="gray.300" />}
+                />
+                <Input type="text" onChange={(e) => setInput(e.target.value)} placeholder="Learn Chakra-UI & Next.js" />
+                <Button
+                    ml={2}
+                    onClick={() => sendData()}
+                >
+                    Add Todo
+                </Button>
+            </InputGroup>
+
+            {todos.map((t, i) => {
                 return (
                     <>
                         {i > 0 && <Divider />}
@@ -128,18 +117,41 @@ const [todos, setTodos] = useState([])
                     </>
                 )
             })}
+        </Flex>
+    )
+}
 
-    //adding delete
-
-    const deleteTodo = (t) => {
-        try {
-            firebase
-                .firestore()
-                .collection(AuthUser.id)
-                .doc(t)
-                .delete()
-                .then(console.log('Data was successfully deleted!'))
-        } catch (error) {
-            console.log(error)
-        }
+export const getServerSideProps = withAuthUserTokenSSR({
+    whenUnauthed: AuthAction.REDIRECT_TO_LOGIN,
+})(async ({ AuthUser, req }) => {
+    // Optionally, get other props.
+    // You can return anything you'd normally return from
+    // `getServerSideProps`, including redirects.
+    // https://nextjs.org/docs/basic-features/data-fetching#getserversideprops-server-side-rendering
+    const token = await AuthUser.getIdToken()
+    const endpoint = getAbsoluteURL('/api/example', req)
+    const response = await fetch(endpoint, {
+        method: 'GET',
+        headers: {
+            Authorization: token || 'unauthenticated',
+        },
+    })
+    const data = await response.json()
+    if (!response.ok) {
+        throw new Error(
+            `Data fetching failed with status ${response.status}: ${JSON.stringify(
+                data
+            )}`
+        )
     }
+    return {
+        props: {
+            favoriteColor: data.favoriteColor,
+        },
+    }
+})
+
+export default withAuthUser({
+    whenUnauthedAfterInit: AuthAction.REDIRECT_TO_LOGIN,
+    whenUnauthedBeforeInit: AuthAction.REDIRECT_TO_LOGIN,
+})(Todo)
